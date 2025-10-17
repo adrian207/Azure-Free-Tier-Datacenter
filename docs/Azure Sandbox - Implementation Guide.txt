@@ -1,0 +1,82 @@
+﻿Azure Sandbox - Implementation Guide
+Document Version: 1.2 Date: October 17, 2025 Purpose: This document provides the step-by-step technical instructions for deploying the Azure Free Tier Data Center as defined in azure_datacenter_spec.md.
+1.0 Prerequisites
+* An Azure account with Owner or Contributor permissions on the subscription.
+* Azure CLI installed and configured on your local machine.
+* An SSH key pair (public and private key). You will use the public key for the Linux VMs.
+2.0 Deployment Steps
+This guide follows the deployment order outlined in the main specification document.
+Step 1-6: Foundational Resources (CLI)
+Run the following Azure CLI commands to create the initial infrastructure.
+   * # Variables
+   * RESOURCE_GROUP="rg-datacenter-dev-westus2-001"
+   * REGION="westus2"
+   * VNET_NAME="vnet-datacenter-dev-westus2-001"
+   * KEY_VAULT_NAME="kv-secrets-dev-westus2-001-$(openssl rand -hex 4)" # Must be globally unique
+   * STORAGE_ACCOUNT_NAME="stfilesdevuswest2001$(openssl rand -hex 4)" # Must be globally unique
+   *    * # 1. Create Resource Group
+   * az group create --name $RESOURCE_GROUP --location $REGION
+   *    * # 2. Deploy Key Vault
+   * az keyvault create --name $KEY_VAULT_NAME --resource-group $RESOURCE_GROUP --location $REGION
+   *    * # 3. (Manual) Deploy SendGrid from Azure Marketplace
+   * # In the Azure Portal, search for "SendGrid" and create an account on the Free tier.
+   * # Once created, retrieve the API Key and store it in Key Vault:
+   * # az keyvault secret set --vault-name $KEY_VAULT_NAME --name "sendgrid-api-key" --value "<YOUR_SENDGRID_API_KEY>"
+   *    * # 4. Deploy VNet and Subnets
+   * az network vnet create --resource-group $RESOURCE_GROUP --name $VNET_NAME --address-prefixes 10.10.0.0/16
+   * az network vnet subnet create --resource-group $RESOURCE_GROUP --vnet-name $VNET_NAME --name snet-management --address-prefixes 10.10.1.0/24
+   * az network vnet subnet create --resource-group $RESOURCE_GROUP --vnet-name $VNET_NAME --name snet-web --address-prefixes 10.10.2.0/24
+   * az network vnet subnet create --resource-group $RESOURCE_GROUP --vnet-name $VNET_NAME --name snet-app --address-prefixes 10.10.3.0/24
+   * az network vnet subnet create --resource-group $RESOURCE_GROUP --vnet-name $VNET_NAME --name snet-database --address-prefixes 10.10.4.0/24
+   * az network vnet subnet create --resource-group $RESOURCE_GROUP --vnet-name $VNET_NAME --name snet-storage --address-prefixes 10.10.5.0/24
+   *    * # 5. Deploy Storage Account and File Share
+   * az storage account create --name $STORAGE_ACCOUNT_NAME --resource-group $RESOURCE_GROUP --location $REGION --sku Standard_LRS
+   * az storage share create --name fs-shared-data --account-name $STORAGE_ACCOUNT_NAME
+   *    * # 6. Deploy NSGs
+   * # (NSG rule creation is verbose in CLI and easier in the Portal. Create NSGs and add rules as per spec.)
+   * az network nsg create --resource-group $RESOURCE_GROUP --name nsg-management
+   * az network nsg create --resource-group $RESOURCE_GROUP --name nsg-internal
+   * # Associate NSGs with subnets in the Azure Portal.
+
+
+Step 7-9: Compute and Configuration
+Deploy VMs and configure the bastion host.
+   * # 7. Deploy VMs (Enable Managed Identity)
+   * # Bastion Host
+   * az vm create --resource-group $RESOURCE_GROUP --name vm-bastion-dev-westus2-001 --image Ubuntu2204 --size Standard_B1s --vnet-name $VNET_NAME --subnet snet-management --admin-username azureuser --ssh-key-values ~/.ssh/id_rsa.pub --assign-identity
+   *    * # Windows Server
+   * az vm create --resource-group $RESOURCE_GROUP --name vm-winweb-dev-westus2-001 --image Win2022Datacenter --size Standard_B1s --vnet-name $VNET_NAME --subnet snet-web --admin-username azureuser --admin-password "<A_COMPLEX_PASSWORD>" --assign-identity
+   *    * # Linux Proxy Server
+   * az vm create --resource-group $RESOURCE_GROUP --name vm-linuxproxy-dev-westus2-001 --image Ubuntu2204 --size Standard_B1s --vnet-name $VNET_NAME --subnet snet-web --admin-username azureuser --ssh-key-values ~/.ssh/id_rsa.pub --assign-identity
+   *    * # Linux Application Server
+   * az vm create --resource-group $RESOURCE_GROUP --name vm-linuxapp-dev-westus2-001 --image Ubuntu2204 --size Standard_B1s --vnet-name $VNET_NAME --subnet snet-app --admin-username azureuser --ssh-key-values ~/.ssh/id_rsa.pub --assign-identity
+
+
+8. Assign Key Vault Permissions: In the Azure Portal, navigate to the Key Vault, go to "Access policies," and grant "Get" and "List" secret permissions to the Managed Identities of all four VMs.
+9. Configure Bastion Host:
+* SSH into the bastion host: ssh azureuser@<bastion_public_ip>
+   * Install Docker, Docker Compose, and Ansible:
+sudo apt-get update && sudo apt-get install -y docker.io docker-compose ansible
+   * sudo systemctl enable --now docker
+   *    * Create and run a docker-compose.yml for Guacamole as previously specified.
+Step 10-12: Services and Finalization
+   * 10. Deploy Azure SQL: Use the Azure Portal to create the Azure SQL Database on the S0 tier. Store the admin password in Key Vault.
+   * 11. Configure Azure Monitor: In the Portal, navigate to Azure Monitor > Alerts and create the alert rules and action group as specified.
+   * 12. Mount Azure Files: Use Ansible to mount the share on all relevant servers.
+3.0 Ansible Configuration
+On the bastion host (vm-bastion-dev-westus2-001):
+   1. Configure Windows for WinRM as previously specified.
+   2. Create Ansible Inventory:
+   * Create /etc/ansible/hosts:
+[linux]
+   * 10.10.2.10  # Private IP of vm-linuxproxy
+   * 10.10.3.10  # Private IP of vm-linuxapp
+   *    * [windows]
+   * 10.10.2.11  # Private IP of vm-winweb
+   *    * [windows:vars]
+   * ansible_user=azureuser
+   * ansible_password=<YOUR_WINDOWS_VM_PASSWORD>
+   * ansible_connection=winrm
+   * ansible_winrm_server_cert_validation=ignore
+      *       3. Example Playbooks: Use playbooks as previously specified to manage all servers in the inventory.
+      *

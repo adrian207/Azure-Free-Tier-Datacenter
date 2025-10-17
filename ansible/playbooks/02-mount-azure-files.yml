@@ -1,0 +1,102 @@
+---
+# Playbook: Mount Azure Files Share
+# Purpose: Mount Azure Files share on all servers for shared storage
+# Mount Points: /mnt/shared (Linux), Z: drive (Windows)
+
+- name: Mount Azure Files on Linux Servers
+  hosts: all_linux
+  become: yes
+  gather_facts: yes
+  
+  vars:
+    mount_point: "/mnt/shared"
+    cifs_credentials_file: "/etc/smbcredentials/{{ azure_storage_account }}.cred"
+    
+  tasks:
+    - name: Install CIFS utilities
+      apt:
+        name: cifs-utils
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+      
+    - name: Create mount point directory
+      file:
+        path: "{{ mount_point }}"
+        state: directory
+        mode: '0755'
+        
+    - name: Create credentials directory
+      file:
+        path: /etc/smbcredentials
+        state: directory
+        mode: '0700'
+        
+    - name: Get storage account key from environment
+      set_fact:
+        storage_key: "{{ lookup('env', 'AZURE_STORAGE_KEY') }}"
+      no_log: true
+      
+    - name: Create credentials file
+      copy:
+        content: |
+          username={{ azure_storage_account }}
+          password={{ storage_key }}
+        dest: "{{ cifs_credentials_file }}"
+        mode: '0600'
+        owner: root
+        group: root
+      no_log: true
+      
+    - name: Add entry to /etc/fstab
+      mount:
+        path: "{{ mount_point }}"
+        src: "//{{ azure_storage_account }}.file.core.windows.net/{{ azure_file_share }}"
+        fstype: cifs
+        opts: "credentials={{ cifs_credentials_file }},dir_mode=0777,file_mode=0777,serverino,nosharesock,actimeo=30"
+        state: mounted
+        
+    - name: Verify mount
+      command: mountpoint -q {{ mount_point }}
+      register: mount_check
+      changed_when: false
+      failed_when: mount_check.rc != 0
+      
+    - name: Create test file
+      file:
+        path: "{{ mount_point }}/mount_test_{{ inventory_hostname }}.txt"
+        state: touch
+        mode: '0644'
+        
+    - name: Display success message
+      debug:
+        msg: "Azure Files share successfully mounted at {{ mount_point }}"
+
+- name: Mount Azure Files on Windows Servers
+  hosts: windows_servers
+  gather_facts: yes
+  
+  tasks:
+    - name: Get storage account key
+      set_fact:
+        storage_key: "{{ lookup('env', 'AZURE_STORAGE_KEY') }}"
+      no_log: true
+      
+    - name: Map Azure Files as Z: drive
+      win_mapped_drive:
+        letter: Z
+        path: "\\\\{{ azure_storage_account }}.file.core.windows.net\\{{ azure_file_share }}"
+        username: "Azure\\{{ azure_storage_account }}"
+        password: "{{ storage_key }}"
+        state: present
+      no_log: true
+      
+    - name: Create test file on Z: drive
+      win_file:
+        path: "Z:\\mount_test_{{ inventory_hostname }}.txt"
+        state: touch
+        
+    - name: Display success message
+      debug:
+        msg: "Azure Files share successfully mapped as Z: drive"
+

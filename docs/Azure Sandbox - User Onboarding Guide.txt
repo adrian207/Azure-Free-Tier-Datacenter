@@ -1,0 +1,32 @@
+﻿Azure Sandbox - User Onboarding Guide
+Document Version: 1.2 Date: October 17, 2025
+Welcome to the Azure Development Sandbox!
+This guide provides you with the essential information needed to access and start using the development environment.
+1. How to Access the Environment
+All access to the servers is managed through a secure web portal called Apache Guacamole. This allows you to get a remote desktop or terminal session directly in your browser.
+* URL: Your system administrator will provide you with the web address.
+* Credentials: You will also receive a unique username and password for the portal.
+Once you log in, you will see a list of available server connections. Simply click on one to connect.
+2. Your Environment Overview
+The sandbox contains four primary servers for your use:
+* vm-winweb-dev-westus2-001 (Windows Server):
+   * Purpose: For hosting and testing Windows-based applications (e.g., IIS, .NET).
+   * OS: Windows Server 2022
+* vm-linuxproxy-dev-westus2-001 (Linux Proxy Server):
+   * Purpose: Acts as a reverse proxy and entry point for web traffic.
+   * OS: Ubuntu 22.04 LTS
+* vm-linuxapp-dev-westus2-001 (Linux Application Server):
+   * Purpose: For hosting and testing the backend of your Linux-based applications and services (e.g., Node.js, Python, Java).
+   * OS: Ubuntu 22.04 LTS
+* vm-bastion-dev-westus2-001 (Bastion Host):
+   * Purpose: This is the secure gateway and is used for system administration. Direct access is limited.
+3. Shared File Storage
+A central file share is available to easily move files between the Windows and Linux servers.
+* On the Windows Server: It is mapped as the Z: drive.
+* On the Linux Servers: It is mounted at the /mnt/shared directory.
+4. Important Rules & Guidelines
+To ensure the environment remains stable and secure for everyone, please adhere to the following rules:
+* Do Not Change Network Settings: Please do not alter any IP addresses, firewall rules (NSGs), or other network configurations.
+* No Credentials in Code: Do not hard-code passwords or API keys. The system is configured to use Azure Key Vault for securely managing secrets. Ask your team lead for guidance.
+* Report Issues: If you encounter any problems or suspect a security issue, please report it to the system administrator immediately.
+*

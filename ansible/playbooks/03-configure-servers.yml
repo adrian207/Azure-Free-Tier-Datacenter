@@ -1,0 +1,142 @@
+---
+# Playbook: Initial Server Configuration
+# Purpose: Configure all servers with baseline settings
+# Run: Once after initial deployment
+
+- name: Configure Linux Servers
+  hosts: all_linux
+  become: yes
+  gather_facts: yes
+  
+  tasks:
+    - name: Set timezone
+      timezone:
+        name: "{{ system_timezone }}"
+        
+    - name: Install common packages
+      apt:
+        name: "{{ common_linux_packages }}"
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+      
+    - name: Configure SSH - Disable root login
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitRootLogin'
+        line: 'PermitRootLogin no'
+        state: present
+      notify: Restart SSH
+      when: disable_root_login
+      
+    - name: Configure SSH - Disable password authentication
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+        state: present
+      notify: Restart SSH
+      when: not allow_password_auth
+      
+    - name: Create Ansible log directory
+      file:
+        path: /var/log/ansible
+        state: directory
+        mode: '0755'
+        
+    - name: Configure automatic security updates
+      apt:
+        name: unattended-upgrades
+        state: present
+      when: ansible_os_family == "Debian"
+      
+    - name: Enable automatic security updates
+      copy:
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+          APT::Periodic::AutocleanInterval "7";
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        mode: '0644'
+      when: ansible_os_family == "Debian"
+      
+    - name: Set up fail2ban for SSH protection
+      apt:
+        name: fail2ban
+        state: present
+      when: ansible_os_family == "Debian"
+      
+    - name: Configure fail2ban
+      copy:
+        content: |
+          [sshd]
+          enabled = true
+          port = ssh
+          filter = sshd
+          logpath = /var/log/auth.log
+          maxretry = 3
+          bantime = 3600
+        dest: /etc/fail2ban/jail.d/sshd.conf
+        mode: '0644'
+      notify: Restart fail2ban
+      
+    - name: Install Azure CLI
+      shell: |
+        curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+      args:
+        creates: /usr/bin/az
+        
+  handlers:
+    - name: Restart SSH
+      service:
+        name: sshd
+        state: restarted
+        
+    - name: Restart fail2ban
+      service:
+        name: fail2ban
+        state: restarted
+
+- name: Configure Windows Servers
+  hosts: windows_servers
+  gather_facts: yes
+  
+  tasks:
+    - name: Set timezone
+      win_timezone:
+        timezone: "Pacific Standard Time"
+        
+    - name: Enable Windows Firewall
+      win_firewall:
+        state: enabled
+        profiles:
+          - Domain
+          - Private
+          
+    - name: Install Chocolatey
+      win_chocolatey:
+        name: chocolatey
+        state: present
+        
+    - name: Install useful tools via Chocolatey
+      win_chocolatey:
+        name:
+          - notepadplusplus
+          - 7zip
+          - googlechrome
+        state: present
+        
+    - name: Configure Windows Update settings
+      win_regedit:
+        path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU
+        name: AUOptions
+        data: 4
+        type: dword
+        
+    - name: Install IIS Web Server
+      win_feature:
+        name: Web-Server
+        state: present
+        include_management_tools: yes
+      when: "'web_tier' in group_names"
+

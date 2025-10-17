@@ -1,0 +1,44 @@
+---
+# Global variables for all hosts
+
+# Azure Configuration
+azure_resource_group: "rg-datacenter-dev-westus2-001"
+azure_region: "westus2"
+azure_keyvault_name: "{{ lookup('env', 'KEY_VAULT_NAME') }}"
+
+# Storage Account Configuration
+azure_storage_account: "{{ lookup('env', 'STORAGE_ACCOUNT_NAME') }}"
+azure_file_share: "fs-shared-data"
+
+# Network Configuration
+vnet_address_space: "10.10.0.0/16"
+management_subnet: "10.10.1.0/24"
+web_subnet: "10.10.2.0/24"
+app_subnet: "10.10.3.0/24"
+database_subnet: "10.10.4.0/24"
+storage_subnet: "10.10.5.0/24"
+
+# Common packages for Linux
+common_linux_packages:
+  - curl
+  - wget
+  - vim
+  - git
+  - htop
+  - net-tools
+  - unzip
+  - jq
+  - ca-certificates
+  - gnupg
+  - lsb-release
+
+# Timezone
+system_timezone: "America/Los_Angeles"
+
+# Monitoring
+enable_monitoring: true
+
+# Security settings
+disable_root_login: true
+allow_password_auth: false
+

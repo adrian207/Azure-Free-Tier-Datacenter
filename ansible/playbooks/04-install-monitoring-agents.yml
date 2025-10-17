@@ -1,0 +1,56 @@
+---
+# Playbook: Install Monitoring Agents
+# Purpose: Install and configure Azure Monitor agents on all VMs
+# Note: Uses managed identity for authentication
+
+- name: Install Azure Monitor Agent on Linux
+  hosts: all_linux
+  become: yes
+  gather_facts: yes
+  
+  tasks:
+    - name: Download Azure Monitor Agent
+      get_url:
+        url: https://aka.ms/azuremonitoragent-linux
+        dest: /tmp/azure-monitor-agent.sh
+        mode: '0755'
+      when: enable_monitoring
+      
+    - name: Install Azure Monitor Agent
+      shell: bash /tmp/azure-monitor-agent.sh
+      args:
+        creates: /opt/microsoft/azuremonitoragent
+      when: enable_monitoring
+      
+    - name: Verify agent is running
+      systemd:
+        name: azuremonitoragent
+        state: started
+        enabled: yes
+      when: enable_monitoring
+
+- name: Install Azure Monitor Agent on Windows
+  hosts: windows_servers
+  gather_facts: yes
+  
+  tasks:
+    - name: Download Azure Monitor Agent
+      win_get_url:
+        url: https://aka.ms/azuremonitoragent-windows
+        dest: C:\Temp\AzureMonitorAgent.msi
+      when: enable_monitoring
+      
+    - name: Install Azure Monitor Agent
+      win_package:
+        path: C:\Temp\AzureMonitorAgent.msi
+        state: present
+        arguments: /quiet /norestart
+      when: enable_monitoring
+      
+    - name: Verify agent service is running
+      win_service:
+        name: AzureMonitorAgent
+        state: started
+        start_mode: auto
+      when: enable_monitoring
+

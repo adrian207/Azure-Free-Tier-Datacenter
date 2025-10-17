@@ -1,0 +1,59 @@
+﻿Azure Sandbox - Operations & Maintenance Manual
+Document Version: 1.4 Date: October 17, 2025 Purpose: This document outlines the standard operating procedures (SOPs) for the ongoing management, maintenance, and monitoring of the Azure Free Tier Data Center environment, with a focus on automated processes.
+1.0 Automated Maintenance
+1.1 OS Patch Management
+* Automation Tool: A cron job on the vm-bastion-dev-westus2-001 host.
+* Schedule: The job is configured to run automatically at 10:00 PM (PST) on the second Tuesday of every month.
+* Process: The cron job executes the master Ansible playbooks which target all servers defined in the inventory (/etc/ansible/hosts). This handles OS updates and upgrades for all VMs. A log of the run is saved to /var/log/ansible/.
+1.2 Automated Security Hardening
+* Secrets Rotation:
+   * Automation Tool: Azure Automation Account.
+   * Process: A PowerShell runbook is scheduled to run every 90 days. It uses a Managed Identity with permissions to Azure Key Vault to automatically generate a new password for the SQL database and update the secret in the vault.
+* Vulnerability Scanning:
+   * Automation Tool: A cron job on the bastion host.
+   * Process: On the first day of each quarter, a scheduled job initiates a full scan of all internal VMs using OpenVAS. Upon completion, a summary report is automatically emailed to the IT-Support@example.com distribution list for review.
+* Log Review:
+   * Process: In addition to real-time alerts, Azure Monitor is configured with a scheduled query rule that runs daily. It scans for suspicious patterns (e.g., multiple failed logins) and sends a daily digest email, reducing the need for manual log inspection.
+2.0 User Access Management
+2.1 Onboarding
+1. Access requests must be submitted by a team lead via a service ticket.
+2. The request is reviewed and approved by the Cloud Administrator.
+3. Upon approval, a unique, least-privilege account is created in Guacamole.
+4. Credentials are provided to the user through a secure, one-time channel.
+2.2 Offboarding
+1. Upon a user's departure or change in role, the team lead must immediately file an "Access Revocation" ticket.
+2. The user's Guacamole account must be disabled within 4 hours of the notification.
+2.3 Automated Access Review
+* Automation Tool: Azure Automation Account.
+* Process: On a semi-annual basis, a runbook automatically generates a list of all active Guacamole users and their access levels. This report is emailed to the Cloud Administrator, who is responsible for reviewing it and identifying any accounts that are no longer needed.
+3.0 Change Management
+3.1 Change Request Process
+1. Any change to the environment must be documented in a change request ticket, including a description, justification, and a rollback plan.
+2. The change must be approved by the Change Advisory Board (CAB).
+3.2 Implementation and Rollback
+* Approved changes will be scheduled for implementation during a designated maintenance window.
+* If a change causes an unexpected issue, the implementer must immediately execute the documented rollback plan.
+4.0 Monitoring & Incident Management
+4.1 Monitoring and Alerting Protocol
+* Primary Tool: Azure Monitor.
+* Alert Recipients: IT-Support@example.com distribution list.
+* Triage Protocol: Alerts are acknowledged within 30 minutes, diagnosed, and escalated within one hour if unresolved.
+4.2 Incident Management
+* Severity Levels: Sev 1 (outage), Sev 2 (critical service down), Sev 3 (degradation).
+* Communication Plan: For Sev 1/2 incidents, status updates are sent to stakeholders every 60 minutes.
+* Root Cause Analysis (RCA): A formal post-mortem is required for any Sev 1 incident.
+5.0 Backup and Disaster Recovery
+5.1 Backup and Recovery Strategy
+* Virtual Machines: Use Azure Backup with daily backups and a 14-day retention.
+* Azure SQL Database: Default automated backups (Point-in-Time Restore) are active.
+* Azure Files Share: Daily snapshots with a 7-day retention period.
+5.2 Disaster Recovery (DR) Plan
+* Strategy: In the event of a full westus2 regional failure, the environment will be rebuilt in a secondary region (e.g., westus3) using IaC scripts and Ansible.
+* RTO (Recovery Time Objective): 24 hours.
+* RPO (Recovery Point Objective): 12 hours.
+6.0 Cost Management
+* The Cloud Administrator will review the Azure Cost Management dashboard weekly.
+* A budget will be set to automatically alert stakeholders if spending approaches the free-tier limits.
+7.0 Decommissioning
+* The entire rg-datacenter-dev-westus2-001 resource group must be deleted to ensure all billing stops.
+*

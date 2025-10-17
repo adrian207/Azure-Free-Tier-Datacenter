@@ -1,0 +1,78 @@
+---
+# Playbook: System Update and Patching
+# Purpose: Update all Linux servers with latest patches
+# Schedule: Run monthly via cron (2nd Tuesday, 10 PM)
+
+- name: Update Linux Servers
+  hosts: all_linux
+  become: yes
+  gather_facts: yes
+  
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: ansible_os_family == "Debian"
+      
+    - name: Upgrade all packages
+      apt:
+        upgrade: dist
+        autoremove: yes
+        autoclean: yes
+      when: ansible_os_family == "Debian"
+      register: apt_upgrade
+      
+    - name: Check if reboot is required
+      stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+      
+    - name: Display packages that were upgraded
+      debug:
+        msg: "System packages were upgraded"
+      when: apt_upgrade.changed
+      
+    - name: Log update completion
+      lineinfile:
+        path: /var/log/ansible/system-updates.log
+        line: "{{ ansible_date_time.iso8601 }} - System updated on {{ inventory_hostname }}"
+        create: yes
+        mode: '0644'
+        
+    - name: Notify if reboot is required
+      debug:
+        msg: "REBOOT REQUIRED on {{ inventory_hostname }}"
+      when: reboot_required.stat.exists
+      
+    - name: Create reboot flag file
+      file:
+        path: /tmp/reboot_required
+        state: touch
+        mode: '0644'
+      when: reboot_required.stat.exists
+
+- name: Update Windows Servers
+  hosts: windows_servers
+  gather_facts: yes
+  
+  tasks:
+    - name: Install all security updates
+      win_updates:
+        category_names:
+          - SecurityUpdates
+          - CriticalUpdates
+          - UpdateRollups
+        reboot: no
+      register: win_updates
+      
+    - name: Display Windows updates installed
+      debug:
+        msg: "{{ win_updates.installed_update_count }} updates installed"
+      when: win_updates.installed_update_count > 0
+      
+    - name: Check if reboot is required
+      debug:
+        msg: "REBOOT REQUIRED on {{ inventory_hostname }}"
+      when: win_updates.reboot_required
+

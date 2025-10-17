@@ -1,0 +1,81 @@
+﻿Azure Free Tier Data Center - Technical Specification
+Document Version: 1.7 Date: October 17, 2025 Objective: To deploy a small-scale, multi-server data center environment within a new Azure tenant for development and testing purposes. This architecture is designed to operate entirely within the limits of the Azure free tier offering, providing a cost-effective sandbox environment.
+1.0 High-Level Architecture
+The environment will be built on a "hub-and-spoke" network topology. All servers will reside on a private Virtual Network (VNet), isolated from the public internet. A single, hardened Linux VM will serve as an Ansible control node and a secure access bastion via Apache Guacamole. The environment includes a Windows web server, a Linux proxy server, and a Linux application server. The environment is fully monitored by Azure Monitor, with alerts sent via SendGrid. Secrets are managed in Azure Key Vault, and shared files are hosted in Azure Files.
+Key Principles:
+* Security by Default: No inbound internet access except for the bastion host.
+* Cost Optimization: All selected services are free-tier eligible or functionally free at this scale.
+* Isolation: Subnets will logically segment server roles.
+* Automated Maintenance: Ansible will be used for configuration management and patching.
+* Integrated Monitoring: Azure Monitor will be the central tool for observability and alerting.
+2.0 Resource Naming Convention
+All resources will adhere to the convention: {resource_type}-{purpose}-{env}-{region}-{instance}
+3.0 Component Specifications
+3.1 Resource Group
+* Name: rg-datacenter-dev-westus2-001, Region: West US 2
+3.2 Networking
+* Virtual Network (VNet): vnet-datacenter-dev-westus2-001, 10.10.0.0/16
+* Subnets:
+   * snet-management: 10.10.1.0/24
+   * snet-web: 10.10.2.0/24
+   * snet-app: 10.10.3.0/24 (New)
+   * snet-database: 10.10.4.0/24
+   * snet-storage: 10.10.5.0/24 (For Private Endpoints)
+* Network Security Groups (NSGs):
+   * nsg-management: Applied to snet-management. Allow HTTPS (443) and SSH (22) from <Your_Office_Public_IP>.
+   * nsg-internal: Applied to snet-web, snet-app, snet-database, snet-storage. Allow necessary internal traffic from snet-management; deny all inbound Internet.
+3.3 Compute (Virtual Machines)
+* Bastion Host (Ansible Control Node):
+   * Name: vm-bastion-dev-westus2-001, OS: Ubuntu 22.04 LTS, Size: Standard_B1s
+   * Software: Apache Guacamole (Docker), Ansible
+* Windows Server:
+   * Name: vm-winweb-dev-westus2-001, OS: Windows Server 2022, Size: Standard_B1s
+* Linux Server (Proxy):
+   * Name: vm-linuxproxy-dev-westus2-001, OS: Ubuntu 22.04 LTS, Size: Standard_B1s
+* Linux Server (Application):
+   * Name: vm-linuxapp-dev-westus2-001, OS: Ubuntu 22.04 LTS, Size: Standard_B1s (New)
+3.4 Database
+* Service: Azure SQL Database
+* Name: sql-maindb-dev-westus2-001, Tier: Standard S0
+3.5 Secrets Management
+* Service: Azure Key Vault
+* Name: kv-secrets-dev-westus2-001, Tier: Standard
+3.6 Shared Storage
+* Service: Azure Files
+* Storage Account: stfilesdevuswest2001, Share Name: fs-shared-data, Size: 5 GiB
+* Networking: Private Endpoint in snet-storage.
+3.7 Monitoring & Alerting
+* Service: Azure Monitor
+* Configuration:
+   * Data Collection: Enable default platform and basic host metrics for all resources.
+   * Alert Rules: Create baseline alert rules for key metrics (e.g., VM CPU > 90%, Server unresponsive, SQL DB DTU > 80%).
+   * Action Groups: Configure an Action Group to be triggered by alerts. This group's action will be to send an email notification.
+3.8 Email Service
+* Service: SendGrid
+* Name: sg-notifications-dev-westus2-001
+* Pricing Tier: Free Plan
+* Integration: The Azure Monitor Action Group will be configured to use this SendGrid account to relay email alerts. The API key for SendGrid will be stored as a secret in Azure Key Vault.
+4.0 Deployment & Access Protocol
+4.1 Deployment Order
+1. Create the Resource Group.
+2. Deploy Azure Key Vault.
+3. Deploy the SendGrid account from the Azure Marketplace and store its API key in Key Vault.
+4. Deploy the VNet and all subnets.
+5. Deploy the Storage Account and its Private Endpoint.
+6. Deploy and configure both NSGs.
+7. Deploy all four VMs and enable their Managed Identities.
+8. Assign VM Managed Identities access policies in Key Vault.
+9. Install and configure Guacamole and Ansible on the bastion host.
+10. Deploy the Azure SQL Database and store its credentials in Key Vault.
+11. Configure Azure Monitor with alert rules and an Action Group pointing to the SendGrid service.
+12. Mount the Azure Files share on the servers.
+4.2 Server Access & Maintenance
+* Primary Access: Via web browser to the Guacamole instance.
+* Automation: SSH to the bastion host to run Ansible playbooks.
+* Alerts: All critical alerts will be automatically sent via email to the designated administrator address.
+5.0 Limitations & Operational Responsibilities
+* Performance: This environment is not for performance testing due to the use of burstable VMs and entry-level service tiers.
+* Cost Monitoring: The engineering team is responsible for monitoring costs using the Azure Cost Management + Billing dashboard in the Azure Portal and setting budgets.
+* OS Maintenance: The engineering team is responsible for regularly executing Ansible update playbooks.
+* Decommissioning: Delete the entire resource group to remove all components and cease billing.
+*

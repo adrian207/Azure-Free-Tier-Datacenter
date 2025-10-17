@@ -1,0 +1,27 @@
+---
+# Master Playbook: Complete System Update
+# Purpose: Run all update and maintenance tasks
+# Usage: ansible-playbook playbooks/master-update.yml
+
+- name: Execute complete system maintenance
+  hosts: localhost
+  gather_facts: no
+  
+  tasks:
+    - name: Display maintenance start time
+      debug:
+        msg: "Starting system maintenance at {{ ansible_date_time.iso8601 }}"
+
+- import_playbook: 01-system-update.yml
+- import_playbook: 02-mount-azure-files.yml
+- import_playbook: 04-install-monitoring-agents.yml
+
+- name: Maintenance Summary
+  hosts: localhost
+  gather_facts: no
+  
+  tasks:
+    - name: Display maintenance completion
+      debug:
+        msg: "System maintenance completed at {{ ansible_date_time.iso8601 }}"
+
