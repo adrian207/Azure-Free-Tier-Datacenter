@@ -1,5 +1,18 @@
 ---
-# Global variables for all hosts
+################################################################################
+# Global Variables for All Hosts
+#
+# Author: Adrian Johnson <adrian207@gmail.com>
+# Version: 1.0
+# Date: October 17, 2025
+#
+# Description:
+#   Global Ansible variables applied to all hosts in the inventory.
+#   Defines Azure configuration, networking, and common settings.
+#
+# Copyright (c) 2025 Adrian Johnson
+# Licensed under MIT License
+################################################################################
 
 # Azure Configuration
 azure_resource_group: "rg-datacenter-dev-westus2-001"

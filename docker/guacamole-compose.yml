@@ -1,8 +1,30 @@
-version: '3.8'
-
+################################################################################
 # Apache Guacamole Docker Compose Configuration
-# For Azure Free Tier Datacenter Bastion Host
-# This provides web-based remote desktop access to all servers
+#
+# Author: Adrian Johnson <adrian207@gmail.com>
+# Version: 1.0
+# Date: October 17, 2025
+#
+# Purpose: Deploy Apache Guacamole for web-based remote access
+#
+# Description:
+#   This Docker Compose configuration deploys Apache Guacamole with PostgreSQL
+#   backend on the bastion host. Provides web-based RDP/SSH/VNC access to all
+#   servers in the datacenter through a single web interface.
+#
+# Services:
+#   - guacamole-db: PostgreSQL 15 database
+#   - guacd: Guacamole proxy daemon
+#   - guacamole: Guacamole web application (port 8080)
+#
+# Usage:
+#   docker-compose up -d
+#
+# Copyright (c) 2025 Adrian Johnson
+# Licensed under MIT License
+################################################################################
+
+version: '3.8'
 
 services:
   # Guacamole Database (PostgreSQL)

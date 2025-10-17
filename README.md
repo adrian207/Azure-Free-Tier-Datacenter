@@ -1,5 +1,12 @@
 # Azure Free Tier Datacenter
 
+**Author:** Adrian Johnson <adrian207@gmail.com>  
+**Version:** 1.0  
+**Last Updated:** October 17, 2025  
+**License:** MIT
+
+---
+
 A complete, production-ready Azure datacenter environment designed to run entirely within the Azure free tier. Perfect for development, testing, learning, and small-scale production workloads.
 
 ## 🏗️ Architecture Overview
@@ -387,21 +394,52 @@ This will:
 - [Ansible Documentation](https://docs.ansible.com/)
 - [Azure CLI Reference](https://docs.microsoft.com/cli/azure/)
 
+## 🏗️ DNS Configuration
+
+### Why Hosts.ini Instead of CoreDNS?
+
+This project uses Ansible's inventory file (`hosts.ini`) with static IP addresses rather than a dedicated DNS server like CoreDNS. This decision is intentional and appropriate for this environment:
+
+**Advantages of hosts.ini for this scale:**
+- Azure VNet already provides automatic DNS resolution for VM hostnames
+- Direct IP addressing in Ansible is simpler and more reliable for 4 servers
+- No additional VM resources required for DNS infrastructure
+- Easier troubleshooting and maintenance
+- Zero DNS propagation delays
+
+**When to consider CoreDNS:**
+- Environments with 20+ servers requiring service discovery
+- Microservices architectures with dynamic scaling
+- Multi-region deployments requiring custom DNS resolution
+- Kubernetes clusters (where CoreDNS is standard)
+
+For this 4-server datacenter, the hosts.ini approach provides optimal simplicity and reliability.
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit issues or pull requests.
 
+**Project Maintainer:** Adrian Johnson <adrian207@gmail.com>
+
 ## 📄 License
 
-This project is provided as-is for educational and development purposes.
+This project is provided under the MIT License.
+
+Copyright (c) 2025 Adrian Johnson
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## ⚠️ Disclaimer
 
-[Unverified] This architecture is designed for development and testing. For production workloads, additional security hardening, backup strategies, and high-availability configurations should be implemented.
+[Unverified] This architecture is designed for development and testing environments. For production workloads, additional security hardening, backup strategies, high-availability configurations, and compliance controls should be implemented according to your organization's requirements.
 
 ---
 
+**Author:** Adrian Johnson <adrian207@gmail.com>  
+**Repository:** https://github.com/adrian207/Azure-Free-Tier-Datacenter  
 **Built with ❤️ for the Azure community**
-
-*Last Updated: October 17, 2025*
 

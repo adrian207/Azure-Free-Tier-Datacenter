@@ -1,7 +1,25 @@
 ---
-# Playbook: System Update and Patching
-# Purpose: Update all Linux servers with latest patches
-# Schedule: Run monthly via cron (2nd Tuesday, 10 PM)
+################################################################################
+# Ansible Playbook: System Update and Patching
+#
+# Author: Adrian Johnson <adrian207@gmail.com>
+# Version: 1.0
+# Date: October 17, 2025
+#
+# Purpose: Update all Linux and Windows servers with latest security patches
+# Schedule: Run monthly via cron (2nd Tuesday at 10:00 PM PST)
+#
+# Description:
+#   Performs OS updates on all servers in the datacenter. Includes automatic
+#   package upgrades, cleanup, and reboot detection. For Linux servers, uses
+#   apt package manager. For Windows, installs security and critical updates.
+#
+# Usage:
+#   ansible-playbook playbooks/01-system-update.yml
+#
+# Copyright (c) 2025 Adrian Johnson
+# Licensed under MIT License
+################################################################################
 
 - name: Update Linux Servers
   hosts: all_linux
