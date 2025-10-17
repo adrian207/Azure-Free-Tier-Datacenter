@@ -1,0 +1,261 @@
+---
+################################################################################
+# Ansible Playbook: Install FreeIPA Server
+#
+# Author: Adrian Johnson <adrian207@gmail.com>
+# Version: 1.0
+# Date: October 17, 2025
+#
+# Purpose: Install and configure FreeIPA identity management server
+#
+# Description:
+#   This playbook installs FreeIPA server providing centralized authentication,
+#   LDAP directory service, Kerberos authentication, integrated DNS, and
+#   Certificate Authority (PKI). Creates a complete enterprise identity 
+#   management solution.
+#
+# Prerequisites:
+#   - Ubuntu 22.04 or Rocky/AlmaLinux
+#   - At least 2GB RAM (B1s may struggle, monitor resources)
+#   - Fully qualified domain name configured
+#
+# Usage:
+#   ansible-playbook playbooks/07-install-freeipa-server.yml
+#
+# Copyright (c) 2025 Adrian Johnson
+# Licensed under MIT License
+################################################################################
+
+- name: Install FreeIPA Server
+  hosts: vm-linuxapp  # Install on app server
+  become: yes
+  gather_facts: yes
+  
+  vars:
+    freeipa_domain: "datacenter.local"
+    freeipa_realm: "DATACENTER.LOCAL"
+    freeipa_ds_password: "{{ lookup('password', '/tmp/freeipa_ds_pass chars=ascii_letters,digits length=20') }}"
+    freeipa_admin_password: "{{ lookup('password', '/tmp/freeipa_admin_pass chars=ascii_letters,digits length=20') }}"
+    freeipa_hostname: "ipa.{{ freeipa_domain }}"
+    
+  tasks:
+    - name: Display installation info
+      debug:
+        msg:
+          - "Installing FreeIPA Server"
+          - "Domain: {{ freeipa_domain }}"
+          - "Realm: {{ freeipa_realm }}"
+          - "Hostname: {{ freeipa_hostname }}"
+    
+    # Step 1: Pre-installation checks
+    - name: Check available memory
+      shell: free -m | awk 'NR==2{print $2}'
+      register: available_memory
+      changed_when: false
+      
+    - name: Warn if low memory
+      debug:
+        msg: "WARNING: Only {{ available_memory.stdout }}MB RAM available. FreeIPA recommends 2GB minimum."
+      when: available_memory.stdout|int < 2000
+      
+    # Step 2: Set hostname
+    - name: Set FQDN hostname
+      hostname:
+        name: "{{ freeipa_hostname }}"
+        
+    - name: Add hostname to /etc/hosts
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ ansible_default_ipv4.address }} {{ freeipa_hostname }} ipa"
+        insertafter: '127.0.0.1'
+        
+    # Step 3: Install FreeIPA packages
+    - name: Install FreeIPA server packages (Ubuntu/Debian)
+      apt:
+        name:
+          - freeipa-server
+          - freeipa-server-dns
+          - freeipa-server-trust-ad
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+      register: install_result
+      retries: 3
+      delay: 10
+      until: install_result is success
+      
+    # Step 4: Configure FreeIPA Server
+    - name: Run FreeIPA server installation
+      shell: |
+        ipa-server-install \
+          --domain={{ freeipa_domain }} \
+          --realm={{ freeipa_realm }} \
+          --ds-password='{{ freeipa_ds_password }}' \
+          --admin-password='{{ freeipa_admin_password }}' \
+          --hostname={{ freeipa_hostname }} \
+          --setup-dns \
+          --auto-forwarders \
+          --no-reverse \
+          --unattended
+      args:
+        creates: /etc/ipa/default.conf
+      register: ipa_install
+      async: 3600  # 1 hour timeout
+      poll: 30  # Check every 30 seconds
+      
+    - name: Display installation result
+      debug:
+        var: ipa_install.stdout_lines
+      when: ipa_install is changed
+      
+    # Step 5: Open firewall ports
+    - name: Install firewalld
+      apt:
+        name: firewalld
+        state: present
+      when: ansible_os_family == "Debian"
+      
+    - name: Start firewalld
+      service:
+        name: firewalld
+        state: started
+        enabled: yes
+        
+    - name: Open FreeIPA ports
+      firewalld:
+        service: "{{ item }}"
+        permanent: yes
+        state: enabled
+        immediate: yes
+      loop:
+        - http
+        - https
+        - ldap
+        - ldaps
+        - kerberos
+        - kpasswd
+        - dns
+      ignore_errors: yes  # If firewalld not available
+      
+    # Step 6: Get Kerberos ticket for admin
+    - name: Obtain Kerberos ticket for admin
+      shell: echo '{{ freeipa_admin_password }}' | kinit admin
+      no_log: true
+      changed_when: false
+      
+    # Step 7: Configure default password policy
+    - name: Configure password policy
+      shell: |
+        ipa pwpolicy-mod --minlife=0 --maxlife=365 --history=5 --minlength=12
+      ignore_errors: yes
+      
+    # Step 8: Create initial groups
+    - name: Create administrator group
+      shell: ipa group-add datacenter-admins --desc="Datacenter Administrators"
+      ignore_errors: yes
+      
+    - name: Create users group
+      shell: ipa group-add datacenter-users --desc="Datacenter Users"
+      ignore_errors: yes
+      
+    # Step 9: Add admin to administrator group
+    - name: Add admin user to administrator group
+      shell: ipa group-add-member datacenter-admins --users=admin
+      ignore_errors: yes
+      
+    # Step 10: Configure sudo rules
+    - name: Create sudo rule for admins
+      shell: |
+        ipa sudorule-add --hostcat=all datacenter-admin-sudo
+        ipa sudorule-add-user --groups=datacenter-admins datacenter-admin-sudo
+        ipa sudorule-add-allow-command --sudocmds=ALL datacenter-admin-sudo
+      ignore_errors: yes
+      
+    # Step 11: Create service principal for SSH
+    - name: Create SSH service principals for each host
+      shell: ipa service-add ssh/{{ item }}.{{ freeipa_domain }}
+      loop:
+        - vm-bastion
+        - vm-linuxproxy
+        - vm-linuxapp
+        - vm-winweb
+      ignore_errors: yes
+      
+    # Step 12: Save credentials
+    - name: Save FreeIPA credentials
+      copy:
+        content: |
+          ========================================
+          FreeIPA Server Credentials
+          ========================================
+          
+          Server: {{ freeipa_hostname }}
+          Domain: {{ freeipa_domain }}
+          Realm: {{ freeipa_realm }}
+          
+          Web UI: https://{{ ansible_default_ipv4.address }}/ipa
+          
+          Admin Username: admin
+          Admin Password: {{ freeipa_admin_password }}
+          
+          Directory Manager Password: {{ freeipa_ds_password }}
+          
+          ========================================
+          KEEP THIS FILE SECURE!
+          ========================================
+          
+          Kerberos Configuration:
+          - Obtain ticket: kinit admin
+          - List tickets: klist
+          - Destroy ticket: kdestroy
+          
+          Web Interface:
+          - https://{{ ansible_default_ipv4.address }}/ipa/ui
+          - Username: admin
+          - Password: (see above)
+          
+          LDAP Configuration:
+          - Server: ldap://{{ ansible_default_ipv4.address }}
+          - Base DN: dc=datacenter,dc=local
+          - User DN: uid=admin,cn=users,cn=accounts,dc=datacenter,dc=local
+          
+          DNS Configuration:
+          - Update clients: /etc/resolv.conf
+          - nameserver {{ ansible_default_ipv4.address }}
+          
+          Certificate Authority:
+          - CA Certificate: /etc/ipa/ca.crt
+          - Issue certificates via: ipa cert-request
+          
+          ========================================
+        dest: /root/freeipa-credentials.txt
+        mode: '0600'
+        owner: root
+        group: root
+
+- name: Post-Installation Summary
+  hosts: localhost
+  gather_facts: no
+  
+  tasks:
+    - name: Display completion message
+      debug:
+        msg:
+          - "=========================================="
+          - "FreeIPA Server Installation Complete!"
+          - "=========================================="
+          - ""
+          - "Server Details:"
+          - "  Web UI: https://{{ hostvars['vm-linuxapp']['ansible_default_ipv4']['address'] }}/ipa/ui"
+          - "  Username: admin"
+          - "  Password: Stored in /root/freeipa-credentials.txt on server"
+          - ""
+          - "Next Steps:"
+          - "1. Access web interface to verify installation"
+          - "2. Create user accounts"
+          - "3. Enroll client servers with playbook: 08-enroll-freeipa-clients.yml"
+          - "4. Configure Windows LDAP integration"
+          - ""
+          - "WARNING: Save credentials from /root/freeipa-credentials.txt"
+          - ""
+
