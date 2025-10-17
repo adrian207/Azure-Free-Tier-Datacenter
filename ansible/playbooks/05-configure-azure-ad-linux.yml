@@ -1,0 +1,177 @@
+---
+################################################################################
+# Ansible Playbook: Configure Azure AD Authentication for Linux
+#
+# Author: Adrian Johnson <adrian207@gmail.com>
+# Version: 1.0
+# Date: October 17, 2025
+#
+# Purpose: Configure Linux servers to authenticate against Azure Active Directory
+#
+# Description:
+#   This playbook configures Linux servers to use Azure AD for authentication.
+#   Users can log in with their Azure AD credentials (user@domain.com).
+#   Supports SSH authentication and sudo access based on Azure AD groups.
+#
+# Prerequisites:
+#   - Azure AD tenant configured
+#   - VM has system-assigned managed identity
+#   - Network connectivity to Azure AD endpoints
+#
+# Usage:
+#   ansible-playbook playbooks/05-configure-azure-ad-linux.yml
+#
+# Copyright (c) 2025 Adrian Johnson
+# Licensed under MIT License
+################################################################################
+
+- name: Configure Azure AD Authentication on Linux Servers
+  hosts: all_linux
+  become: yes
+  gather_facts: yes
+  
+  vars:
+    aad_tenant_id: "{{ lookup('env', 'AZURE_TENANT_ID') }}"
+    aad_allowed_groups: []  # Add Azure AD group IDs that should have access
+    
+  tasks:
+    - name: Display configuration info
+      debug:
+        msg: "Configuring Azure AD authentication for {{ inventory_hostname }}"
+    
+    # Step 1: Install required packages
+    - name: Install Azure AD authentication packages
+      apt:
+        name:
+          - aad-login
+          - libpam-aad
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+      
+    # Step 2: Enable Azure AD login extension
+    - name: Enable Azure AD login via VM extension (requires Azure CLI)
+      shell: |
+        az vm extension set \
+          --resource-group {{ azure_resource_group }} \
+          --vm-name {{ inventory_hostname }} \
+          --name AADSSHLoginForLinux \
+          --publisher Microsoft.Azure.ActiveDirectory
+      delegate_to: localhost
+      run_once: false
+      ignore_errors: yes
+      
+    # Step 3: Configure PAM for Azure AD
+    - name: Configure PAM to use Azure AD
+      blockinfile:
+        path: /etc/pam.d/sshd
+        block: |
+          # Azure AD Authentication
+          auth    required    pam_aad.so
+          account required    pam_aad.so
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - Azure AD"
+        insertbefore: '@include common-auth'
+        
+    # Step 4: Configure SSH for Azure AD
+    - name: Configure SSH to allow Azure AD authentication
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?{{ item.key }}'
+        line: '{{ item.key }} {{ item.value }}'
+        state: present
+      loop:
+        - { key: 'ChallengeResponseAuthentication', value: 'yes' }
+        - { key: 'UsePAM', value: 'yes' }
+        - { key: 'AuthenticationMethods', value: 'publickey,keyboard-interactive' }
+      notify: Restart SSH
+      
+    # Step 5: Configure sudo access for Azure AD users
+    - name: Create sudoers file for Azure AD administrators
+      copy:
+        content: |
+          # Azure AD Administrator Group
+          # Replace with your Azure AD admin group ID
+          # %aad_<group_id> ALL=(ALL) ALL
+          
+          # Example: Allow specific Azure AD user
+          # user@domain.com ALL=(ALL) ALL
+        dest: /etc/sudoers.d/aad-admins
+        mode: '0440'
+        validate: 'visudo -cf %s'
+        
+    # Step 6: Verify managed identity
+    - name: Check if VM has managed identity
+      uri:
+        url: http://169.254.169.254/metadata/identity/info?api-version=2021-02-01
+        headers:
+          Metadata: "true"
+        return_content: yes
+      register: managed_identity
+      ignore_errors: yes
+      
+    - name: Display managed identity status
+      debug:
+        msg: "Managed Identity: {{ 'Enabled' if managed_identity.status == 200 else 'Not Enabled' }}"
+        
+    # Step 7: Create Azure AD login information file
+    - name: Create Azure AD login instructions
+      copy:
+        content: |
+          ========================================
+          Azure AD Authentication Configured
+          ========================================
+          
+          To log in with Azure AD:
+          
+          1. Use your Azure AD email as username:
+             ssh your-email@yourdomain.com@{{ ansible_default_ipv4.address }}
+          
+          2. You will be prompted for your Azure AD password
+          
+          3. MFA may be required depending on Conditional Access policies
+          
+          4. To grant sudo access, edit: /etc/sudoers.d/aad-admins
+          
+          Azure AD Tenant ID: {{ aad_tenant_id }}
+          VM: {{ inventory_hostname }}
+          
+          Troubleshooting:
+          - Check logs: journalctl -u sshd -f
+          - Test auth: sudo -u username id
+          - Verify identity: curl -H "Metadata:true" http://169.254.169.254/metadata/identity/info
+          
+        dest: /etc/motd-aad
+        mode: '0644'
+        
+    - name: Add Azure AD info to MOTD
+      lineinfile:
+        path: /etc/motd
+        line: "Azure AD Authentication: Enabled. See /etc/motd-aad for details."
+        create: yes
+        
+  handlers:
+    - name: Restart SSH
+      service:
+        name: sshd
+        state: restarted
+
+- name: Post-Configuration Summary
+  hosts: localhost
+  gather_facts: no
+  
+  tasks:
+    - name: Display next steps
+      debug:
+        msg:
+          - "=========================================="
+          - "Azure AD Authentication Configuration Complete"
+          - "=========================================="
+          - ""
+          - "Next Steps:"
+          - "1. Test Azure AD login with: ssh user@domain.com@<server-ip>"
+          - "2. Configure Conditional Access policies in Azure Portal"
+          - "3. Add Azure AD groups to /etc/sudoers.d/aad-admins"
+          - "4. Enable MFA for all admin accounts"
+          - ""
+          - "Documentation: https://docs.microsoft.com/azure/active-directory/devices/"
+

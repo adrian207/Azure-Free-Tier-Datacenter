@@ -1,0 +1,211 @@
+---
+################################################################################
+# Ansible Playbook: Configure Azure AD Authentication for Windows
+#
+# Author: Adrian Johnson <adrian207@gmail.com>
+# Version: 1.0
+# Date: October 17, 2025
+#
+# Purpose: Join Windows servers to Azure Active Directory
+#
+# Description:
+#   This playbook configures Windows Server 2022 to join Azure AD.
+#   Enables Azure AD authentication for RDP and local access.
+#   Supports hybrid Azure AD join for traditional AD-like experience.
+#
+# Prerequisites:
+#   - Windows Server 2022
+#   - Network connectivity to Azure AD
+#   - Global Administrator or Cloud Device Administrator credentials
+#
+# Usage:
+#   ansible-playbook playbooks/06-configure-azure-ad-windows.yml
+#   (Requires WINDOWS_PASSWORD environment variable)
+#
+# Copyright (c) 2025 Adrian Johnson
+# Licensed under MIT License
+################################################################################
+
+- name: Configure Azure AD Authentication on Windows Servers
+  hosts: windows_servers
+  gather_facts: yes
+  
+  vars:
+    aad_tenant_id: "{{ lookup('env', 'AZURE_TENANT_ID') }}"
+    
+  tasks:
+    - name: Display configuration info
+      debug:
+        msg: "Configuring Azure AD join for {{ inventory_hostname }}"
+    
+    # Step 1: Check current Azure AD join status
+    - name: Check if already Azure AD joined
+      win_shell: dsregcmd /status
+      register: aad_status
+      changed_when: false
+      
+    - name: Display current status
+      debug:
+        var: aad_status.stdout_lines
+        
+    # Step 2: Install required Windows features
+    - name: Ensure required Windows features are installed
+      win_feature:
+        name:
+          - RSAT-AD-Tools
+        state: present
+      ignore_errors: yes
+      
+    # Step 3: Configure Azure AD join via Settings
+    - name: Create Azure AD join script
+      win_copy:
+        content: |
+          # Azure AD Join Script
+          # This script must be run interactively or with proper credentials
+          
+          Write-Host "========================================" -ForegroundColor Cyan
+          Write-Host "Azure AD Join Configuration" -ForegroundColor Cyan
+          Write-Host "========================================" -ForegroundColor Cyan
+          Write-Host ""
+          
+          # Check current status
+          Write-Host "Current Azure AD Status:" -ForegroundColor Yellow
+          dsregcmd /status | Select-String "AzureAd"
+          Write-Host ""
+          
+          # Instructions for manual join
+          Write-Host "To join this server to Azure AD:" -ForegroundColor Green
+          Write-Host "1. Open Settings > Accounts > Access work or school" -ForegroundColor White
+          Write-Host "2. Click 'Connect'" -ForegroundColor White
+          Write-Host "3. Select 'Join this device to Azure Active Directory'" -ForegroundColor White
+          Write-Host "4. Enter your Azure AD admin credentials" -ForegroundColor White
+          Write-Host "5. Complete MFA if prompted" -ForegroundColor White
+          Write-Host ""
+          
+          # Alternative: Join via PowerShell (requires user interaction)
+          Write-Host "Or use PowerShell (requires admin credentials):" -ForegroundColor Green
+          Write-Host "Install-Module -Name AzureAD -Force" -ForegroundColor White
+          Write-Host "Connect-AzureAD" -ForegroundColor White
+          Write-Host ""
+          
+          Write-Host "Tenant ID: {{ aad_tenant_id }}" -ForegroundColor Yellow
+          Write-Host "VM: {{ inventory_hostname }}" -ForegroundColor Yellow
+          Write-Host ""
+        dest: C:\Temp\Join-AzureAD.ps1
+        
+    # Step 4: Configure RDP for Azure AD users
+    - name: Add Azure AD users to Remote Desktop Users group
+      win_group_membership:
+        name: Remote Desktop Users
+        members:
+          - 'AzureAD\AzureADAdmin'
+        state: present
+      ignore_errors: yes
+      
+    # Step 5: Configure Windows Hello for Business (optional)
+      win_regedit:
+        path: HKLM:\SOFTWARE\Policies\Microsoft\PassportForWork
+        name: Enabled
+        data: 1
+        type: dword
+      ignore_errors: yes
+      
+    # Step 6: Enable Azure AD authentication for RDP
+    - name: Configure RDP to allow Azure AD authentication
+      win_regedit:
+        path: HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp
+        name: SecurityLayer
+        data: 1
+        type: dword
+        
+    - name: Enable Network Level Authentication
+      win_regedit:
+        path: HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp
+        name: UserAuthentication
+        data: 1
+        type: dword
+        
+    # Step 7: Create post-configuration information file
+    - name: Create Azure AD configuration guide
+      win_copy:
+        content: |
+          ========================================
+          Azure AD Authentication Configuration
+          ========================================
+          
+          Status: Configuration Prepared
+          Tenant ID: {{ aad_tenant_id }}
+          VM: {{ inventory_hostname }}
+          
+          MANUAL STEPS REQUIRED:
+          
+          1. Join to Azure AD:
+             - Run: C:\Temp\Join-AzureAD.ps1
+             - Or use Settings > Accounts > Access work or school
+          
+          2. After joining, users can log in with:
+             - RDP: AzureAD\user@domain.com
+             - Password: Azure AD password
+             - MFA: As configured in Azure AD
+          
+          3. Grant admin access:
+             - Add users to local Administrators group:
+               net localgroup Administrators "AzureAD\user@domain.com" /add
+          
+          4. Verify join status:
+             dsregcmd /status
+          
+          5. Test login:
+             - Use RDP with AzureAD\user@domain.com
+          
+          TROUBLESHOOTING:
+          
+          - Check connectivity: Test-NetConnection login.microsoftonline.com -Port 443
+          - View logs: Event Viewer > Applications and Services > Microsoft > Windows > User Device Registration
+          - Re-join: dsregcmd /leave, then join again
+          
+          AZURE AD CONDITIONAL ACCESS:
+          
+          Configure policies in Azure Portal:
+          - Azure Active Directory > Security > Conditional Access
+          - Require MFA for admin access
+          - Block legacy authentication
+          - Require compliant devices
+          
+          ========================================
+        dest: C:\Temp\AzureAD-Config-Guide.txt
+        
+    - name: Display join instructions
+      debug:
+        msg:
+          - "Azure AD configuration prepared on {{ inventory_hostname }}"
+          - "Review: C:\\Temp\\AzureAD-Config-Guide.txt"
+          - "Run: C:\\Temp\\Join-AzureAD.ps1"
+
+- name: Post-Configuration Summary
+  hosts: localhost
+  gather_facts: no
+  
+  tasks:
+    - name: Display next steps
+      debug:
+        msg:
+          - "=========================================="
+          - "Azure AD Windows Configuration Complete"
+          - "=========================================="
+          - ""
+          - "IMPORTANT: Manual Azure AD join required"
+          - ""
+          - "On each Windows server:"
+          - "1. RDP to the server"
+          - "2. Run: C:\\Temp\\Join-AzureAD.ps1"
+          - "3. Follow the on-screen instructions"
+          - "4. Verify with: dsregcmd /status"
+          - ""
+          - "After joining:"
+          - "- Users log in with: AzureAD\\user@domain.com"
+          - "- MFA applies per Azure AD policies"
+          - "- Manage access via Azure AD groups"
+          - ""
+          - "Documentation: https://docs.microsoft.com/azure/active-directory/devices/azureadjoin-plan"
+
