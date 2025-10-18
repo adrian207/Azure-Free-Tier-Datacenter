@@ -1,0 +1,42 @@
+# Azure Free Tier Datacenter - Version Pinning
+#
+# Author: Adrian Johnson <adrian207@gmail.com>
+# Date: October 17, 2025
+# Purpose: Pin all dependency versions for reproducibility
+#
+# Copyright (c) 2025 Adrian Johnson
+# Licensed under MIT License
+################################################################################
+
+# Docker Images
+POSTGRES_VERSION=15.4-alpine
+GUACAMOLE_VERSION=1.5.4
+NGINX_VERSION=1.25.3-alpine
+
+# Linux Packages (Ubuntu 22.04)
+ANSIBLE_VERSION=2.15.5
+DOCKER_VERSION=24.0.7
+DOCKER_COMPOSE_VERSION=2.23.0
+
+# Azure CLI (minimum version)
+AZURE_CLI_MIN_VERSION=2.53.0
+
+# Python Packages (if using)
+PYTHON_VERSION=3.10.12
+
+# Azure VM Images
+UBUNTU_IMAGE=Ubuntu2204
+WINDOWS_IMAGE=Win2022Datacenter
+
+# Azure Resource SKUs
+VM_SKU=Standard_B1s
+SQL_SKU=Basic
+STORAGE_SKU=Standard_LRS
+
+# FreeIPA Packages (freeipa branch)
+FREEIPA_SERVER_VERSION=4.9.11-1
+SSSD_VERSION=2.6.3-1
+
+# Last Updated: 2025-10-17
+# Review quarterly for security updates
+

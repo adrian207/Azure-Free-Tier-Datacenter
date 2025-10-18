@@ -1,0 +1,288 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "dashboardName": {
+      "type": "string",
+      "defaultValue": "Azure-Datacenter-Dashboard",
+      "metadata": {
+        "description": "Name of the dashboard"
+      }
+    },
+    "resourceGroup": {
+      "type": "string",
+      "defaultValue": "rg-datacenter-dev-westus2-001",
+      "metadata": {
+        "description": "Resource group name"
+      }
+    },
+    "subscriptionId": {
+      "type": "string",
+      "defaultValue": "[subscription().subscriptionId]",
+      "metadata": {
+        "description": "Azure subscription ID"
+      }
+    }
+  },
+  "variables": {
+    "vmBastion": "vm-bastion-dev-westus2-001",
+    "vmWinWeb": "vm-winweb-dev-westus2-001",
+    "vmLinuxProxy": "vm-linuxproxy-dev-westus2-001",
+    "vmLinuxApp": "vm-linuxapp-dev-westus2-001"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Portal/dashboards",
+      "apiVersion": "2020-09-01-preview",
+      "name": "[parameters('dashboardName')]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "hidden-title": "Azure Free Tier Datacenter Dashboard",
+        "author": "Adrian Johnson",
+        "version": "1.0"
+      },
+      "properties": {
+        "lenses": [
+          {
+            "order": 0,
+            "parts": [
+              {
+                "position": {
+                  "x": 0,
+                  "y": 0,
+                  "colSpan": 6,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "type": "Extension/HubsExtension/PartType/MarkdownPart",
+                  "settings": {
+                    "content": {
+                      "settings": {
+                        "content": "# Azure Free Tier Datacenter\n\n**Author:** Adrian Johnson <adrian207@gmail.com>  \n**Version:** 2.0  \n**Status:** Active\n\n## Quick Links\n- [Resource Group](https://portal.azure.com/#@/resource/subscriptions/[parameters('subscriptionId')]/resourceGroups/[parameters('resourceGroup')])\n- [Key Vault](https://portal.azure.com/#@/resource/subscriptions/[parameters('subscriptionId')]/resourceGroups/[parameters('resourceGroup')]/providers/Microsoft.KeyVault/vaults/)\n- [Cost Management](https://portal.azure.com/#blade/Microsoft_Azure_CostManagement/Menu/overview)\n\n## Infrastructure\n- 4 Virtual Machines (B1s)\n- 5 Subnets with NSG security\n- Azure SQL Database (Basic)\n- Azure Monitor with alerting",
+                        "title": "Dashboard Overview",
+                        "subtitle": ""
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "position": {
+                  "x": 6,
+                  "y": 0,
+                  "colSpan": 6,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "type": "Extension/HubsExtension/PartType/MonitorChartPart",
+                  "settings": {
+                    "content": {
+                      "metrics": [
+                        {
+                          "resourceMetadata": {
+                            "id": "[resourceId(parameters('resourceGroup'), 'Microsoft.Compute/virtualMachines', variables('vmBastion'))]"
+                          },
+                          "name": "Percentage CPU",
+                          "aggregationType": 4,
+                          "namespace": "Microsoft.Compute/virtualMachines",
+                          "metricVisualization": {
+                            "displayName": "Percentage CPU"
+                          }
+                        }
+                      ],
+                      "title": "Bastion Host - CPU Usage",
+                      "titleKind": 1,
+                      "visualization": {
+                        "chartType": 2
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "position": {
+                  "x": 0,
+                  "y": 4,
+                  "colSpan": 6,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "type": "Extension/HubsExtension/PartType/MonitorChartPart",
+                  "settings": {
+                    "content": {
+                      "metrics": [
+                        {
+                          "resourceMetadata": {
+                            "id": "[resourceId(parameters('resourceGroup'), 'Microsoft.Compute/virtualMachines', variables('vmWinWeb'))]"
+                          },
+                          "name": "Percentage CPU",
+                          "aggregationType": 4,
+                          "namespace": "Microsoft.Compute/virtualMachines",
+                          "metricVisualization": {
+                            "displayName": "Percentage CPU"
+                          }
+                        }
+                      ],
+                      "title": "Windows Web Server - CPU Usage",
+                      "titleKind": 1,
+                      "visualization": {
+                        "chartType": 2
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "position": {
+                  "x": 6,
+                  "y": 4,
+                  "colSpan": 6,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "type": "Extension/HubsExtension/PartType/MonitorChartPart",
+                  "settings": {
+                    "content": {
+                      "metrics": [
+                        {
+                          "resourceMetadata": {
+                            "id": "[resourceId(parameters('resourceGroup'), 'Microsoft.Compute/virtualMachines', variables('vmLinuxProxy'))]"
+                          },
+                          "name": "Percentage CPU",
+                          "aggregationType": 4,
+                          "namespace": "Microsoft.Compute/virtualMachines",
+                          "metricVisualization": {
+                            "displayName": "Percentage CPU"
+                          }
+                        }
+                      ],
+                      "title": "Linux Proxy - CPU Usage",
+                      "titleKind": 1,
+                      "visualization": {
+                        "chartType": 2
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "position": {
+                  "x": 0,
+                  "y": 8,
+                  "colSpan": 6,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "type": "Extension/HubsExtension/PartType/MonitorChartPart",
+                  "settings": {
+                    "content": {
+                      "metrics": [
+                        {
+                          "resourceMetadata": {
+                            "id": "[resourceId(parameters('resourceGroup'), 'Microsoft.Compute/virtualMachines', variables('vmLinuxApp'))]"
+                          },
+                          "name": "Percentage CPU",
+                          "aggregationType": 4,
+                          "namespace": "Microsoft.Compute/virtualMachines",
+                          "metricVisualization": {
+                            "displayName": "Percentage CPU"
+                          }
+                        }
+                      ],
+                      "title": "Linux App Server - CPU Usage",
+                      "titleKind": 1,
+                      "visualization": {
+                        "chartType": 2
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "position": {
+                  "x": 6,
+                  "y": 8,
+                  "colSpan": 6,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "type": "Extension/HubsExtension/PartType/MonitorChartPart",
+                  "settings": {
+                    "content": {
+                      "metrics": [
+                        {
+                          "resourceMetadata": {
+                            "id": "[resourceId(parameters('resourceGroup'), 'Microsoft.Compute/virtualMachines', variables('vmBastion'))]"
+                          },
+                          "name": "Network In Total",
+                          "aggregationType": 1,
+                          "namespace": "Microsoft.Compute/virtualMachines",
+                          "metricVisualization": {
+                            "displayName": "Network In Total"
+                          }
+                        },
+                        {
+                          "resourceMetadata": {
+                            "id": "[resourceId(parameters('resourceGroup'), 'Microsoft.Compute/virtualMachines', variables('vmBastion'))]"
+                          },
+                          "name": "Network Out Total",
+                          "aggregationType": 1,
+                          "namespace": "Microsoft.Compute/virtualMachines",
+                          "metricVisualization": {
+                            "displayName": "Network Out Total"
+                          }
+                        }
+                      ],
+                      "title": "Bastion - Network Traffic",
+                      "titleKind": 1,
+                      "visualization": {
+                        "chartType": 2
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "position": {
+                  "x": 0,
+                  "y": 12,
+                  "colSpan": 12,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "type": "Extension/Microsoft_Azure_Monitoring/PartType/AlertsManagementSummaryPart",
+                  "settings": {
+                    "content": {
+                      "dashboardPartTitle": "Active Alerts",
+                      "resourceGroup": "[parameters('resourceGroup')]"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "model": {
+            "timeRange": {
+              "value": {
+                "relative": {
+                  "duration": 24,
+                  "timeUnit": 1
+                }
+              },
+              "type": "MsPortalFx.Composition.Configuration.ValueTypes.TimeRange"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "dashboardId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Portal/dashboards', parameters('dashboardName'))]"
+    }
+  }
+}
+

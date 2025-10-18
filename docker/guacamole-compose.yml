@@ -29,7 +29,7 @@ version: '3.8'
 services:
   # Guacamole Database (PostgreSQL)
   guacamole-db:
-    image: postgres:15-alpine
+    image: postgres:15.4-alpine  # Version pinned for reproducibility
     container_name: guacamole-postgres
     restart: unless-stopped
     environment:
