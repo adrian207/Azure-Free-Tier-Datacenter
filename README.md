@@ -78,6 +78,14 @@ The Azure free account includes 750 hours a month of `B1s` VMs for the first 12 
 - `ansible/inventory/hosts.ini` lists fixed private IPs; check them against `vm-connection-info.txt` after deployment.
 - A `B1s` VM has 1 GB of memory, which is tight for Windows Server and FreeIPA.
 
+## Related repositories
+
+These Azure labs overlap; pick by what you want to practise:
+
+- **Azure-Free-Tier-Datacenter** (this repository): a segmented multi-VM "datacenter" built with Azure CLI and Ansible on free-tier-sized VMs, reached through Guacamole
+- **[Azure-Win-Lab](https://github.com/adrian207/Azure-Win-Lab)**: Terraform for a Samba AD domain controller and server apps in Docker plus a Windows 11 workstation, reached through Azure Bastion
+- **[azure-sql-docker-demos](https://github.com/adrian207/azure-sql-docker-demos)**: Terraform for SQL Server 2022 containers for log shipping, replication and availability groups, with Prometheus and Grafana
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
