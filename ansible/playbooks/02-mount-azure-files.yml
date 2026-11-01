@@ -82,7 +82,7 @@
         storage_key: "{{ lookup('env', 'AZURE_STORAGE_KEY') }}"
       no_log: true
       
-    - name: Map Azure Files as Z: drive
+    - name: "Map Azure Files as Z: drive"
       win_mapped_drive:
         letter: Z
         path: "\\\\{{ azure_storage_account }}.file.core.windows.net\\{{ azure_file_share }}"
@@ -91,7 +91,7 @@
         state: present
       no_log: true
       
-    - name: Create test file on Z: drive
+    - name: "Create test file on Z: drive"
       win_file:
         path: "Z:\\mount_test_{{ inventory_hostname }}.txt"
         state: touch

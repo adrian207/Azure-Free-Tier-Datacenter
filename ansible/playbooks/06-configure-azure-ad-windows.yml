@@ -103,6 +103,7 @@
       ignore_errors: yes
       
     # Step 5: Configure Windows Hello for Business (optional)
+    - name: Enable Windows Hello for Business policy
       win_regedit:
         path: HKLM:\SOFTWARE\Policies\Microsoft\PassportForWork
         name: Enabled

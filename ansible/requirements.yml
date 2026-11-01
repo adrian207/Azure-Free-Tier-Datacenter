@@ -1,0 +1,9 @@
+---
+# Collections the playbooks use. Install with:
+#   ansible-galaxy collection install -r ansible/requirements.yml
+collections:
+  - name: ansible.posix          # firewalld, mount
+  - name: community.general      # timezone
+  - name: ansible.windows        # win_feature, win_regedit, win_updates, win_package, ...
+  - name: community.windows      # win_firewall, win_mapped_drive, win_timezone (the last two are moving to ansible.windows)
+  - name: chocolatey.chocolatey  # win_chocolatey
