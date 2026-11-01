@@ -90,13 +90,23 @@ deploy_vm() {
     
     local log_file="logs/vm-${vm_name}.log"
     
+    # A public IP only for the bastion; an empty value tells az not to create one
+    local pip_args=(--public-ip-address "")
+    if [ -n "$has_public_ip" ]; then
+        pip_args=(--public-ip-address "${vm_name}-pip" --public-ip-sku Standard)
+    fi
+    
     {
         if [ "$admin_type" = "password" ]; then
-            # Get password from Key Vault
-            local password=$(get_password_from_keyvault "$KEY_VAULT_NAME" "windows-admin-password")
+            # Pass the Key Vault password to az through a private temp file (@file), which
+            # keeps it off the command line and still works when retry_with_backoff retries
+            local pw_file
+            pw_file=$(mktemp)
+            chmod 600 "$pw_file"
+            get_password_from_keyvault "$KEY_VAULT_NAME" "windows-admin-password" > "$pw_file"
             
-            # Deploy Windows VM with password from Key Vault
-            echo "$password" | retry_with_backoff 3 az vm create \
+            local create_status=0
+            retry_with_backoff 3 az vm create \
                 --resource-group "$RESOURCE_GROUP" \
                 --name "$vm_name" \
                 --location "$REGION" \
@@ -105,11 +115,12 @@ deploy_vm() {
                 --vnet-name "$VNET_NAME" \
                 --subnet "$vm_subnet" \
                 --admin-username azureuser \
-                --admin-password @- \
-                --public-ip-address ${has_public_ip:+${vm_name}-pip} \
-                ${has_public_ip:+--public-ip-sku Standard} \
+                --admin-password "@$pw_file" \
+                "${pip_args[@]}" \
                 --assign-identity \
-                --output none
+                --output none || create_status=$?
+            rm -f "$pw_file"
+            ( exit $create_status )
         else
             # Deploy Linux VM with SSH key
             retry_with_backoff 3 az vm create \
@@ -122,8 +133,7 @@ deploy_vm() {
                 --subnet "$vm_subnet" \
                 --admin-username azureuser \
                 --ssh-key-values "@$SSH_KEY_PATH" \
-                --public-ip-address ${has_public_ip:+${vm_name}-pip} \
-                ${has_public_ip:+--public-ip-sku Standard} \
+                "${pip_args[@]}" \
                 --assign-identity \
                 --output none
         fi
@@ -226,95 +236,21 @@ echo "  Public IP: $BASTION_PUBLIC_IP"
 echo "  Private IP: $BASTION_PRIVATE_IP"
 echo ""
 
-# Step 2: Deploy Windows Web Server
-echo "Step 2: Deploying Windows Web Server (vm-winweb-dev-westus2-001)..."
-echo "This may take several minutes..."
+# The other three VMs were created in parallel above; look up their private IPs
+get_private_ip() {
+    az vm show --resource-group "$RESOURCE_GROUP" --name "$1" --show-details --query privateIps --output tsv
+}
+WINWEB_PRIVATE_IP=$(get_private_ip vm-winweb-dev-westus2-001)
+LINUXPROXY_PRIVATE_IP=$(get_private_ip vm-linuxproxy-dev-westus2-001)
+LINUXAPP_PRIVATE_IP=$(get_private_ip vm-linuxapp-dev-westus2-001)
 
-az vm create \
-  --resource-group "$RESOURCE_GROUP" \
-  --name vm-winweb-dev-westus2-001 \
-  --location "$REGION" \
-  --image Win2022Datacenter \
-  --size Standard_B1s \
-  --vnet-name "$VNET_NAME" \
-  --subnet snet-web \
-  --admin-username azureuser \
-  --admin-password "$WIN_PASSWORD" \
-  --public-ip-address "" \
-  --assign-identity \
-  --output table
-
-WINWEB_PRIVATE_IP=$(az vm show \
-  --resource-group "$RESOURCE_GROUP" \
-  --name vm-winweb-dev-westus2-001 \
-  --show-details \
-  --query privateIps \
-  --output tsv)
-
-echo "✓ Windows Web Server deployed"
-echo "  Private IP: $WINWEB_PRIVATE_IP"
+echo "✓ Windows Web Server: $WINWEB_PRIVATE_IP"
+echo "✓ Linux Proxy Server: $LINUXPROXY_PRIVATE_IP"
+echo "✓ Linux Application Server: $LINUXAPP_PRIVATE_IP"
 echo ""
 
-# Step 3: Deploy Linux Proxy Server
-echo "Step 3: Deploying Linux Proxy Server (vm-linuxproxy-dev-westus2-001)..."
-echo "This may take several minutes..."
-
-az vm create \
-  --resource-group "$RESOURCE_GROUP" \
-  --name vm-linuxproxy-dev-westus2-001 \
-  --location "$REGION" \
-  --image Ubuntu2204 \
-  --size Standard_B1s \
-  --vnet-name "$VNET_NAME" \
-  --subnet snet-web \
-  --admin-username azureuser \
-  --ssh-key-values "@$SSH_KEY_PATH" \
-  --public-ip-address "" \
-  --assign-identity \
-  --output table
-
-LINUXPROXY_PRIVATE_IP=$(az vm show \
-  --resource-group "$RESOURCE_GROUP" \
-  --name vm-linuxproxy-dev-westus2-001 \
-  --show-details \
-  --query privateIps \
-  --output tsv)
-
-echo "✓ Linux Proxy Server deployed"
-echo "  Private IP: $LINUXPROXY_PRIVATE_IP"
-echo ""
-
-# Step 4: Deploy Linux Application Server
-echo "Step 4: Deploying Linux Application Server (vm-linuxapp-dev-westus2-001)..."
-echo "This may take several minutes..."
-
-az vm create \
-  --resource-group "$RESOURCE_GROUP" \
-  --name vm-linuxapp-dev-westus2-001 \
-  --location "$REGION" \
-  --image Ubuntu2204 \
-  --size Standard_B1s \
-  --vnet-name "$VNET_NAME" \
-  --subnet snet-app \
-  --admin-username azureuser \
-  --ssh-key-values "@$SSH_KEY_PATH" \
-  --public-ip-address "" \
-  --assign-identity \
-  --output table
-
-LINUXAPP_PRIVATE_IP=$(az vm show \
-  --resource-group "$RESOURCE_GROUP" \
-  --name vm-linuxapp-dev-westus2-001 \
-  --show-details \
-  --query privateIps \
-  --output tsv)
-
-echo "✓ Linux Application Server deployed"
-echo "  Private IP: $LINUXAPP_PRIVATE_IP"
-echo ""
-
-# Step 5: Grant Key Vault Access to VM Managed Identities
-echo "Step 5: Granting Key Vault access to VM Managed Identities..."
+# Step 3: Grant Key Vault Access to VM Managed Identities
+echo "Step 3: Granting Key Vault access to VM Managed Identities..."
 
 # Get managed identity principal IDs
 BASTION_IDENTITY=$(az vm identity show \
@@ -367,17 +303,6 @@ az keyvault set-policy \
   --output table
 
 echo "✓ Key Vault access policies configured"
-echo ""
-
-# Store Windows password in Key Vault
-echo "Step 6: Storing Windows credentials in Key Vault..."
-az keyvault secret set \
-  --vault-name "$KEY_VAULT_NAME" \
-  --name "windows-admin-password" \
-  --value "$WIN_PASSWORD" \
-  --output table
-
-echo "✓ Windows credentials stored securely"
 echo ""
 
 # Save VM information
