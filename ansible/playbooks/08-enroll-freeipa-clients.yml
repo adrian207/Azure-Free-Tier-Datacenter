@@ -1,0 +1,265 @@
+---
+################################################################################
+# Ansible Playbook: Enroll FreeIPA Clients
+#
+# Author: Adrian Johnson <adrian207@gmail.com>
+# Version: 1.0
+# Date: October 17, 2025
+#
+# Purpose: Enroll Linux servers as FreeIPA clients
+#
+# Description:
+#   This playbook enrolls Linux servers into the FreeIPA domain using SSSD.
+#   After enrollment, users can log in with their FreeIPA credentials.
+#   Includes automatic home directory creation and sudo integration.
+#
+# Prerequisites:
+#   - FreeIPA server installed and running
+#   - DNS configured to point to FreeIPA server
+#   - Network connectivity to FreeIPA server
+#
+# Usage:
+#   ansible-playbook playbooks/08-enroll-freeipa-clients.yml \
+#     --extra-vars "freeipa_server=10.10.3.4 freeipa_admin_password=yourpass"
+#
+# Copyright (c) 2025 Adrian Johnson
+# Licensed under MIT License
+################################################################################
+
+- name: Enroll Linux Servers as FreeIPA Clients
+  hosts: bastion,linux_servers
+  become: yes
+  gather_facts: yes
+  
+  vars:
+    freeipa_server: "{{ lookup('env', 'FREEIPA_SERVER') | default('10.10.3.4') }}"
+    freeipa_domain: "datacenter.local"
+    freeipa_realm: "DATACENTER.LOCAL"
+    freeipa_admin_password: "{{ lookup('env', 'FREEIPA_ADMIN_PASSWORD') }}"
+    
+  tasks:
+    - name: Display enrollment info
+      debug:
+        msg:
+          - "Enrolling {{ inventory_hostname }} to FreeIPA"
+          - "Server: {{ freeipa_server }}"
+          - "Domain: {{ freeipa_domain }}"
+    
+    # Step 1: Configure DNS
+    - name: Backup resolv.conf
+      copy:
+        src: /etc/resolv.conf
+        dest: /etc/resolv.conf.bak
+        remote_src: yes
+        
+    - name: Configure DNS to use FreeIPA server
+      blockinfile:
+        path: /etc/resolv.conf
+        block: |
+          nameserver {{ freeipa_server }}
+          search {{ freeipa_domain }}
+        marker: "# {mark} ANSIBLE MANAGED - FreeIPA DNS"
+        insertbefore: BOF
+        
+    # Step 2: Install FreeIPA client packages
+    - name: Install FreeIPA client packages
+      apt:
+        name:
+          - freeipa-client
+          - sssd
+          - sssd-tools
+          - oddjob-mkhomedir
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+      
+    # Step 3: Run FreeIPA client enrollment
+    - name: Enroll client to FreeIPA domain
+      shell: |
+        ipa-client-install \
+          --server={{ freeipa_server }} \
+          --domain={{ freeipa_domain }} \
+          --realm={{ freeipa_realm }} \
+          --principal=admin \
+          --password='{{ freeipa_admin_password }}' \
+          --hostname={{ inventory_hostname }}.{{ freeipa_domain }} \
+          --mkhomedir \
+          --enable-dns-updates \
+          --unattended
+      args:
+        creates: /etc/ipa/default.conf
+      register: enrollment
+      
+    - name: Display enrollment result
+      debug:
+        var: enrollment.stdout_lines
+      when: enrollment is changed
+      
+    # Step 4: Configure SSSD
+    - name: Configure SSSD for FreeIPA
+      template:
+        src: sssd.conf.j2
+        dest: /etc/sssd/sssd.conf
+        mode: '0600'
+        owner: root
+        group: root
+      notify: Restart SSSD
+      when: false  # Skip template, ipa-client-install handles this
+      
+    # Step 5: Enable automatic home directory creation
+    - name: Enable mkhomedir
+      shell: pam-auth-update --enable mkhomedir
+      when: ansible_os_family == "Debian"
+      
+    - name: Ensure oddjobd is enabled
+      service:
+        name: oddjobd
+        state: started
+        enabled: yes
+      ignore_errors: yes  # May not be needed on all systems
+      
+    # Step 6: Configure SSH for FreeIPA
+    - name: Configure SSH to use FreeIPA
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?{{ item.key }}'
+        line: '{{ item.key }} {{ item.value }}'
+        state: present
+      loop:
+        - { key: 'GSSAPIAuthentication', value: 'yes' }
+        - { key: 'GSSAPICleanupCredentials', value: 'yes' }
+      notify: Restart SSH
+      
+    # Step 7: Test FreeIPA connectivity
+    - name: Test FreeIPA server connectivity
+      shell: ipa ping
+      register: ipa_ping
+      changed_when: false
+      ignore_errors: yes
+      
+    - name: Display connectivity test
+      debug:
+        msg: "FreeIPA server: {{ 'Reachable' if ipa_ping.rc == 0 else 'Not reachable' }}"
+        
+    # Step 8: Get list of FreeIPA users
+    - name: List FreeIPA users
+      shell: ipa user-find --sizelimit=10
+      register: ipa_users
+      changed_when: false
+      ignore_errors: yes
+      
+    - name: Display available users
+      debug:
+        var: ipa_users.stdout_lines
+      when: ipa_users.rc == 0
+      
+    # Step 9: Configure sudo via SSSD
+    - name: Enable sudo provider in SSSD
+      lineinfile:
+        path: /etc/sssd/sssd.conf
+        regexp: '^sudo_provider'
+        line: 'sudo_provider = ipa'
+        insertafter: '\[domain/'
+      notify: Restart SSSD
+      
+    # Step 10: Create enrollment confirmation file
+    - name: Create enrollment confirmation
+      copy:
+        content: |
+          ========================================
+          FreeIPA Client Enrollment Complete
+          ========================================
+          
+          Hostname: {{ inventory_hostname }}
+          FreeIPA Server: {{ freeipa_server }}
+          Domain: {{ freeipa_domain }}
+          Realm: {{ freeipa_realm }}
+          
+          Configuration Files:
+          - /etc/ipa/default.conf
+          - /etc/sssd/sssd.conf
+          - /etc/krb5.conf
+          
+          Testing FreeIPA Authentication:
+          
+          1. List users:
+             ipa user-find
+          
+          2. Get Kerberos ticket:
+             kinit username@{{ freeipa_realm }}
+          
+          3. Test SSH (from another FreeIPA client):
+             ssh username@{{ inventory_hostname }}.{{ freeipa_domain }}
+          
+          4. Test user lookup:
+             id username
+             getent passwd username
+          
+          5. Test sudo:
+             sudo -l -U username
+          
+          Troubleshooting:
+          
+          - Check SSSD status:
+             systemctl status sssd
+             
+          - View SSSD logs:
+             tail -f /var/log/sssd/*.log
+             
+          - Test connectivity:
+             ipa ping
+             
+          - Re-enroll:
+             ipa-client-install --uninstall
+             (then re-run enrollment playbook)
+          
+          Web UI:
+          - https://{{ freeipa_server }}/ipa/ui
+          
+          ========================================
+        dest: /etc/freeipa-client-info.txt
+        mode: '0644'
+        
+  handlers:
+    - name: Restart SSSD
+      service:
+        name: sssd
+        state: restarted
+        
+    - name: Restart SSH
+      service:
+        name: sshd
+        state: restarted
+
+- name: Post-Enrollment Summary
+  hosts: localhost
+  gather_facts: no
+  
+  tasks:
+    - name: Display completion message
+      debug:
+        msg:
+          - "=========================================="
+          - "FreeIPA Client Enrollment Complete!"
+          - "=========================================="
+          - ""
+          - "Enrolled Servers:"
+          - "  {{ groups['bastion'] | join(', ') }}"
+          - "  {{ groups['linux_servers'] | join(', ') }}"
+          - ""
+          - "Testing Login:"
+          - "1. Create a test user on FreeIPA server:"
+          - "   ipa user-add testuser --first=Test --last=User --password"
+          - ""
+          - "2. SSH to client with FreeIPA credentials:"
+          - "   ssh testuser@<client-ip>"
+          - ""
+          - "3. Verify sudo access (if configured):"
+          - "   sudo -l"
+          - ""
+          - "Next Steps:"
+          - "- Create user accounts in FreeIPA"
+          - "- Configure sudo rules"
+          - "- Set up Windows LDAP integration"
+          - ""
+
